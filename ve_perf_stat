@@ -1,4 +1,13 @@
 #!/bin/bash
+###############################################################
+# Trivial tool for printing periodically performance metrics of
+# processes running on the VE. It uses ve_regs. Adjust the path
+# to ve_regs in variable VE_REGS!
+#
+# This script implies that the PMMR is 0 (default value).
+#
+# (C)opyright 2018 Erich Focht
+###############################################################
 
 DELAY=${DELAY:-5}
 NODEIDS=`echo /dev/veslot* | sed -e 's,/dev/veslot,,g'`
@@ -32,9 +41,7 @@ ve_get_perf () {
     local pid=$1
     eval "unset $REGS"
     T=`date +"%s.%N"`
-    #eval `$VE_REGS -p $pid -f U $REGS 2>/dev/null`
     V=`$VE_REGS -p $pid -f p $REGS 2>/dev/null`
-    #if [ -z "$USRCC" ]; then
     if [ -z "$V" ]; then
         unset DATA[$pid]
         unset PREV[$pid]
@@ -42,7 +49,6 @@ ve_get_perf () {
         if [ -n "${DATA[$pid]}" ]; then
             PREV[$pid]=${DATA[$pid]}
         fi
-        #DATA[$pid]="$T $USRCC $PMC00 $PMC01 $PMC02 $PMC03 $PMC04 $PMC05 $PMC06 $PMC07 $PMC08 $PMC09 $PMC10 $PMC11 $PMC12 $PMC13 $PMC14 $PMC15"
         DATA[$pid]="$T $V"
     fi
 }

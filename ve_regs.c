@@ -29,13 +29,13 @@ void help(char *cmd)
 {
 	fprintf(stderr, "Usage:\n");
 	fprintf(stderr, "\t%s [-h|--help] [-l|--list-regs] [-p|--pid <PID>]"
-		" [-f|--fmt U|L|X] <regid> ...\n\n", cmd);
+		" [-f|--fmt U|L|X|p] <regid> ...\n\n", cmd);
 	fprintf(stderr, "Options:\n");
 	fprintf(stderr, "\t-l|--list-regs   : list the symbolic register IDs.\n");
 	fprintf(stderr, "\t-p|--pid <pid>   : specify VE process ID.\n");
 	fprintf(stderr, "\t-f|--fmt U|L|X|p : print format of register values: unsigned, signed or hex.\n");
 	fprintf(stderr, "\t<regid> ...      : up to 64 symbolic register names like USRCC, PMC01, SR12...\n");
-	fprintf(stderr, "\t                 list them with the -l option.\n");
+	fprintf(stderr, "\t                   list them with the -l option.\n");
 }
 
 int main(int argc, char *argv[])
