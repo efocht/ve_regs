@@ -80,15 +80,39 @@ calc_metrics () {
     USRSEC=$(bc <<< "scale=2;$USRCC / ($CLCK * 1000000)")
     USRTIME=$(bc <<< "scale=2;($USRCC - $oUSRCC) / ($CLCK * 1000000)")
     ELAPSED=$(bc <<< "scale=2;$T - $oT")
-    EFFTIME=$(bc <<< "scale=2;$USRTIME / $ELAPSED")
-    MOPS=$(bc <<< "scale=2;($dEX - $dVX + $dVE + $dFMAEC) / $dUSRCC * $CLCK")
-    MFLOPS=$(bc <<< "scale=2;$dFPEC / $dUSRCC * $CLCK")
-    VOPRAT=$(bc <<< "scale=2;$dVE / ($dEX - $dVX + $dVE) * 100")
-    AVGVL=$(bc <<< "scale=0;$dVE / $dVX")
-    VTIMERATIO=$(bc <<< "scale=2;$dVECC / $dUSRCC * 100")
-    L1CACHEMISS=$(bc <<< "scale=2;$dL1MCC / $dUSRCC * 100")
-    CPUPORTCONF=$(bc <<< "scale=2;$dPCCC / $dUSRCC * 100")
-    VLDLLCHIT=$(bc <<< "scale=2;(1 - $dVLCME / $dVLEC) * 100")
+    if [ $ELAPSED > 0 ]; then
+        EFFTIME=$(bc <<< "scale=2;$USRTIME / $ELAPSED")
+    else
+        EFFTIME=0
+    fi
+    if [ $dUSRCC -gt 0 ]; then
+        MOPS=$(bc <<< "scale=2;($dEX - $dVX + $dVE + $dFMAEC) / $dUSRCC * $CLCK")
+        MFLOPS=$(bc <<< "scale=2;$dFPEC / $dUSRCC * $CLCK")
+        VTIMERATIO=$(bc <<< "scale=2;$dVECC / $dUSRCC * 100")
+        L1CACHEMISS=$(bc <<< "scale=2;$dL1MCC / $dUSRCC * 100")
+        CPUPORTCONF=$(bc <<< "scale=2;$dPCCC / $dUSRCC * 100")
+    else
+        MOPS=0
+        MFLOPS=0
+        VTIMERATIO=0
+        L1CACHEMISS=0
+        CPUPORTCONF=0
+    fi
+    if [ $dEX -gt 0 ]; then
+        VOPRAT=$(bc <<< "scale=2;$dVE / ($dEX - $dVX + $dVE) * 100")
+    else
+        VOPRAT=0
+    fi
+    if [ $dVX -gt 0 ]; then
+        AVGVL=$(bc <<< "scale=0;$dVE / $dVX")
+    else
+        AVGVL=0
+    fi
+    if [ $dVLEC -gt 0 ]; then
+        VLDLLCHIT=$(bc <<< "scale=2;(1 - $dVLCME / $dVLEC) * 100")
+    else
+        VLDLLCHIT=0
+    fi
 }
 
 
