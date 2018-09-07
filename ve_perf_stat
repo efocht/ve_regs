@@ -1,0 +1,127 @@
+#!/bin/bash
+
+DELAY=${DELAY:-5}
+NODEIDS=`echo /dev/veslot* | sed -e 's,/dev/veslot,,g'`
+VE_NODEIDS=${VE_NODEIDS:-$NODEIDS}
+
+
+VE_REGS=./ve_regs
+REGS="USRCC PMC00 PMC01 PMC02 PMC03 PMC04 PMC05 PMC06 PMC07 PMC08 PMC09 PMC10 PMC11 PMC12 PMC13 PMC14 PMC15"
+
+SYMB0="USRCC EX VX FPEC VE VECC L1MCC VE2 VAREC VLDEC PCCC VLDCC VLEC VLCME FMAEC PTCC TTCC"
+oSYMB0="oUSRCC oEX oVX oFPEC oVE oVECC oL1MCC oVE2 oVAREC oVLDEC oPCCC oVLDCC oVLEC oVLCME oFMAEC oPTCC oTTCC"
+
+
+declare -a DATA
+declare -a PREV
+declare -a CLOCK
+
+sysfs_path () {
+    local nodeid=$1
+    echo /sys/class/ve/`basename $(readlink -f /dev/veslot$nodeid)`
+}
+
+get_clocks () {
+    for nodeid in $VE_NODEIDS; do
+        SPATH=`sysfs_path $nodeid`
+        CLOCK[$nodeid]=`cat $SPATH/clock_chip`
+    done
+}
+
+ve_get_perf () {
+    local pid=$1
+    eval "unset $REGS"
+    T=`date +"%s.%N"`
+    #eval `$VE_REGS -p $pid -f U $REGS 2>/dev/null`
+    V=`$VE_REGS -p $pid -f p $REGS 2>/dev/null`
+    #if [ -z "$USRCC" ]; then
+    if [ -z "$V" ]; then
+        unset DATA[$pid]
+        unset PREV[$pid]
+    else
+        if [ -n "${DATA[$pid]}" ]; then
+            PREV[$pid]=${DATA[$pid]}
+        fi
+        #DATA[$pid]="$T $USRCC $PMC00 $PMC01 $PMC02 $PMC03 $PMC04 $PMC05 $PMC06 $PMC07 $PMC08 $PMC09 $PMC10 $PMC11 $PMC12 $PMC13 $PMC14 $PMC15"
+        DATA[$pid]="$T $V"
+    fi
+}
+
+# MOPS                = (EX-VX+VE+FMAEC)/USRCC*1400
+# MFLOPS              = FPEC/USRCC*1400
+# V.OP RATIO          = VE/(EX-VX+VE)*100
+# AVER. V.LEN     [-] = VE/VX
+# VECTOR TIME         = VECC/1.4GHz
+# L1CACHE MISS        = L1MCC/1.4GHz
+# CPU PORT CONF       = PCCC/1.4GHz ??
+# VLD LLC HIT E   [%] = (1-VLCME/VLEC)*100
+
+calc_metrics () {
+    local nid=$1
+    CLCK=${CLOCK[$nid]}
+    dEX=$(bc <<< "$EX - $oEX")
+    dVX=$(bc <<< "$VX - $oVX")
+    dVE=$(bc <<< "$VE - $oVE")
+    dFMAEC=$(bc <<< "$FMAEC - $oFMAEC")
+    dFPEC=$(bc <<< "$FPEC - $oFPEC")
+    dUSRCC=$(bc <<< "$USRCC - $oUSRCC")
+    dVECC=$(bc <<< "$VECC - $oVECC")
+    dL1MCC=$(bc <<< "$L1MCC - $oL1MCC")
+    dPCCC=$(bc <<< "$PCCC - $oPCCC")
+    dVLCME=$(bc <<< "$VLCME - $oVLCME")
+    dVLEC=$(bc <<< "$VLEC - $oVLEC")
+
+    USRSEC=$(bc <<< "scale=2;$USRCC / ($CLCK * 1000000)")
+    USRTIME=$(bc <<< "scale=2;($USRCC - $oUSRCC) / ($CLCK * 1000000)")
+    ELAPSED=$(bc <<< "scale=2;$T - $oT")
+    EFFTIME=$(bc <<< "scale=2;$USRTIME / $ELAPSED")
+    MOPS=$(bc <<< "scale=2;($dEX - $dVX + $dVE + $dFMAEC) / $dUSRCC * $CLCK")
+    MFLOPS=$(bc <<< "scale=2;$dFPEC / $dUSRCC * $CLCK")
+    VOPRAT=$(bc <<< "scale=2;$dVE / ($dEX - $dVX + $dVE) * 100")
+    AVGVL=$(bc <<< "scale=0;$dVE / $dVX")
+    VTIMERATIO=$(bc <<< "scale=2;$dVECC / $dUSRCC * 100")
+    L1CACHEMISS=$(bc <<< "scale=2;$dL1MCC / $dUSRCC * 100")
+    CPUPORTCONF=$(bc <<< "scale=2;$dPCCC / $dUSRCC * 100")
+    VLDLLCHIT=$(bc <<< "scale=2;(1 - $dVLCME / $dVLEC) * 100")
+}
+
+
+print_label () {
+    printf "%-8s  %9s  %7s  %7s  %8s  %5s  %8s  %10s  %7s  %8s  %-10s\n" \
+           PID USRSEC EFFTIME MOPS MFLOPS AVGVL VOPRATIO VTIMERATIO L1CMISS PORTCONF  CMD
+}
+print_perf () {
+    local pid=$1
+    COMM=`cat /proc/$pid/cmdline | sed -e 's,^.*--,,'`
+    printf "%-8d  %8.2fs  %7.3f  %7.0f  %8.0f  %5.0f  %7.1f%%  %9.1f%%  %6.0f%%  %7.0f%%  %-10s\n" \
+           $pid $USRSEC $EFFTIME $MOPS $MFLOPS $AVGVL $VOPRAT $VTIMERATIO $L1CACHEMISS $CPUPORTCONF $COMM
+}
+
+get_clocks
+
+while true; do
+    TSTART=`date +"%s.%N"`
+    print_label
+    
+    # loop over VE node IDs
+    for nodeid in $VE_NODEIDS; do
+        echo "VE NODE $nodeid"
+
+        SPATH=`sysfs_path $nodeid`
+        VE_PIDS=`cat $SPATH/task_id_all | sort -n`
+
+        for pid in $VE_PIDS; do
+            ve_get_perf $pid
+            if [ -n "${PREV[$pid]}" ]; then
+                eval "read oT $oSYMB0 <<<\"${PREV[$pid]}\""
+                eval "read T $SYMB0 <<<\"${DATA[$pid]}\""
+                calc_metrics $nodeid
+                print_perf $pid
+            fi
+        done
+    done
+    echo "---"
+    TEND=`date +"%s.%N"`
+    sleep $(bc <<< "scale=5;$DELAY - ($TEND - $TSTART + 0.006)")
+    
+done
